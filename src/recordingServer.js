@@ -22,7 +22,7 @@ function initSocket(socket) {
 
     socket.on('recording_config', function (msg) {
         socket.rtmpUrl = msg.rtmpUrl;
-        socket.outFile = msg.outFile;
+        socket.outFile = msg.peerId;
 
         socket.emit('message', 'Output destination is set to:' + socket.outFile);
     });

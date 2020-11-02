@@ -1,4 +1,4 @@
-const io = require('socket.io');
+const io = require('socket.io') ({path:'/recording.io'});
 
 const fs = require('fs');
 
@@ -20,44 +20,17 @@ spawn('ffmpeg',['-h']).on('error',function(msg){
 function initSocket(socket) {
     var ffmpegProcess, feedStream = false;
 
-    socket.on('config_rtmp_destination', function (rtmpUrl) {
-        if (typeof rtmpUrl != 'string') {
-            socket.emit('fatal', 'invalid rtmp destination');
-            return;
-        }
+    socket.on('recording_config', function (msg) {
+        socket.rtmpUrl = msg.rtmpUrl;
+        socket.outFile = msg.outFile;
 
-        var regexValidator = /^rtmp:\/\/[^\s]*$/;
-        if (!regexValidator.test(rtmpUrl)) {
-            socket.emit('fatal', 'rtmp address rejected.');
-            return;
-        }
-
-        socket.rtmpUrl = rtmpUrl;
-        socket.emit('message', 'rtmp destination is set to:' + rtmpUrl);
+        socket.emit('message', 'Output destination is set to:' + socket.outFile);
     });
-
-    socket.on('config_vcodec', function (vcodec) {
-        if (typeof vcodec != 'string') {
-            socket.emit('fatal', 'invalid input for video codec');
-            return;
-        }
-        if (!/^[0-9a-z]{2,}$/.test(vcodec)) {
-            socket.emit('fatal', 'The given video codec contains illegal character?.');
-            return;
-        }
-        socket.vcodec = vcodec;
-    });
-
 
     socket.on('start', function (msg) {
 
         if (ffmpegProcess || feedStream) {
             socket.emit('fatal', 'stream is already available and started.');
-            return;
-        }
-
-        if (!socket.rtmpUrl) {
-            socket.emit('fatal', 'No rtmp destination is configured.');
             return;
         }
 
@@ -71,7 +44,8 @@ function initSocket(socket) {
             //'-filter_complex', 'aresample=44100', // resample audio to 44100Hz, needed if input is not 44100
             //'-strict', 'experimental', 
             '-bufsize', '1000',
-            '-f', 'flv', socket.rtmpUrl
+            //'-f', 'flv', socket.rtmpUrl,
+            '-map','0',socket.outFile
         ];
 
         ffmpegProcess = spawn('ffmpeg', ops);
@@ -99,14 +73,14 @@ function initSocket(socket) {
 
     });
 
-    socket.on('binarystream', function (msg) {
+    socket.on('binarystream', function (data) {
         if (!feedStream) {
             socket.emit('fatal', 'Feed Stream is not set');
             ffmpegProcess.stdin.end();
             ffmpegProcess.kill('SIGINT');
             return;
         }
-        feedStream(msg);
+        feedStream(data);
     });
 
     socket.on('disconnect', function () {
@@ -130,7 +104,6 @@ process.on('uncaughtException', function(err) {
 })
 
 module.exports = (server) => {
-    io
-        .listen(server, { log: true })
+    io.listen(server, { log: true })
         .on('connection', initSocket);
 };
